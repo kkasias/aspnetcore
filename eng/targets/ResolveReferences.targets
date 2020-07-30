@@ -76,8 +76,6 @@
     <_AllowedExplicitPackageReference Include="FSharp.Core" Condition="'$(MSBuildProjectExtension)' == '.fsproj'" />
     <_ExplicitPackageReference Include="@(PackageReference)" Exclude="@(_ImplicitPackageReference);@(_AllowedExplicitPackageReference)" />
 
-    <_UnusedProjectReferenceProvider Include="@(ProjectReferenceProvider)" Exclude="@(Reference)" />
-
     <_CompilationOnlyReference Condition="'$(TargetFramework)' == 'netstandard2.0'"
         Include="@(Reference->WithMetadataValue('NuGetPackageId','NETStandard.Library'))" />
 
@@ -91,14 +89,37 @@
         @(Reference->WithMetadataValue('IsSharedSource', 'true'));
         @(Reference->WithMetadataValue('PrivateAssets', 'All'))" />
     <_OriginalReferences Include="@(Reference)" />
+  </ItemGroup>
 
-    <!--
-      Turn Reference items into a ProjectReference when UseProjectReferences is true.
-      Order matters. This comes before package resolution because projects should be used when possible instead of packages.
+  <!--
+      Turn Reference items into a ProjectReference when UseProjectReferences is true. Intersect the two item groups
+      using the Exclude...Exclude approach because nothing else seems to work outside a target. Order matters; this
+      comes before package resolution because projects should be used when possible instead of packages.
     -->
-    <_ProjectReferenceByAssemblyName Condition="'$(UseProjectReferences)' == 'true'"
-      Include="@(ProjectReferenceProvider)"
-      Exclude="@(_UnusedProjectReferenceProvider)" />
+  <ItemGroup Condition=" '$(EnableCustomReferenceResolution)' == 'true' AND '$(UseProjectReferences)' == 'true' ">
+    <!-- _UnusedProjectReferenceProvider may be a fairly big item group; don't log removals unnecessarily. -->
+    <_UnusedProjectReferenceProvider Remove="@(_UnusedProjectReferenceProvider)" />
+    <_ProjectReferenceByAssemblyName Remove="@(_ProjectReferenceByAssemblyName)" />
+
+    <_UnusedProjectReferenceProvider Include="@(ProjectReferenceProvider)" Exclude="@(Reference)" />
+    <_ProjectReferenceByAssemblyName Include="@(ProjectReferenceProvider)" Exclude="@(_UnusedProjectReferenceProvider)" />
+
+    <!-- Yes, this is doing multiple additional intersections to get possible Reference metadata. -->
+    <_ProjectReferenceByAssemblyName Update="@(Reference->HasMetadata('ExcludeAssets'))">
+      <ExcludeAssets>%(Reference.ExcludeAssets)</ExcludeAssets>
+    </_ProjectReferenceByAssemblyName>
+    <_ProjectReferenceByAssemblyName Update="@(Reference->HasMetadata('IncludeAssets'))">
+      <IncludeAssets>%(Reference.IncludeAssets)</IncludeAssets>
+    </_ProjectReferenceByAssemblyName>
+    <_ProjectReferenceByAssemblyName Update="@(Reference->HasMetadata('Private'))">
+      <Private>%(Reference.Private)</Private>
+    </_ProjectReferenceByAssemblyName>
+    <_ProjectReferenceByAssemblyName Update="@(Reference->HasMetadata('PrivateAssets'))">
+      <PrivateAssets>%(Reference.PrivateAssets)</PrivateAssets>
+    </_ProjectReferenceByAssemblyName>
+    <_ProjectReferenceByAssemblyName Update="@(Reference->HasMetadata('ReferenceOutputAssembly'))">
+      <ReferenceOutputAssembly>%(Reference.ReferenceOutputAssembly)</ReferenceOutputAssembly>
+    </_ProjectReferenceByAssemblyName>
 
     <ProjectReference Include="@(_ProjectReferenceByAssemblyName->'%(ProjectPath)')" />
     <Reference Remove="@(_ProjectReferenceByAssemblyName)" />
